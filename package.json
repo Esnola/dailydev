@@ -1,0 +1,25 @@
+{
+  "name": "dailydev",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "api": "node --watch server.mjs",
+    "start": "npm run build && node server.mjs"
+  },
+  "keywords": [],
+  "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@vitejs/plugin-react": "^6.0.1",
+    "tailwindcss": "^4.3.5",
+    "vite": "^8.0.0"
+  }
+}
