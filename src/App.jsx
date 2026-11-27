@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Header from './components/Header.jsx';
-import PostCard from './components/PostCard.jsx';
+import PostCard, { CardSkeleton } from './components/PostCard.jsx';
+import Sidebar from './components/Sidebar.jsx';
 import PostDetail from './components/PostDetail.jsx';
 
 function getPostIdFromPath(pathname) {
@@ -14,6 +15,8 @@ export default function App() {
   const [cursor, setCursor] = useState(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [query, setQuery] = useState('');
+  const sentinelRef = useRef(null);
   const [pathname, setPathname] = useState(() => window.location.pathname);
 
   const postId = getPostIdFromPath(pathname);
@@ -49,7 +52,7 @@ export default function App() {
       setPosts((prev) => (reset ? data : [...prev, ...data]));
       setCursor(pagination?.hasNextPage ? pagination.cursor : undefined);
     } catch (err) {
-      setError(`No se pudo cargar el feed (${err.message}).`);
+      setError(`Could not load the feed (${err.message}).`);
     } finally {
       setLoading(false);
     }
@@ -62,42 +65,79 @@ export default function App() {
   const handleFeedChange = (nextFeed) => {
     setFeed(nextFeed);
     if (postId) navigate('/');
+    else window.scrollTo({ top: 0 });
   };
+
+  // Infinite scroll: load the next page when the sentinel comes into view.
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !cursor || loading || postId || query) return;
+    const io = new IntersectionObserver(
+      ([entry]) => entry.isIntersecting && loadFeed(feed, cursor, false),
+      { rootMargin: '600px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [cursor, loading, feed, postId, query, loadFeed]);
+
+  const visiblePosts = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return posts;
+    return posts.filter((p) =>
+      [p.title, p.summary, p.source?.name, ...(p.tags ?? [])]
+        .filter(Boolean)
+        .some((v) => v.toLowerCase().includes(q))
+    );
+  }, [posts, query]);
 
   return (
     <>
-      <Header feed={feed} onFeedChange={handleFeedChange} />
+      <Header
+        query={query}
+        onQueryChange={(v) => {
+          setQuery(v);
+          if (postId) navigate('/');
+        }}
+        onLogoClick={() => handleFeedChange(feed)}
+      />
+      <Sidebar feed={feed} onFeedChange={handleFeedChange} showActive={!postId} />
 
-      {postId ? (
-        <PostDetail postId={postId} onBack={() => navigate('/')} />
-      ) : (
-        <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-          {error && (
-            <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
-              {error}
+      <div className="pb-20 lg:pb-0 lg:pl-60">
+        {postId ? (
+          <PostDetail postId={postId} onBack={() => navigate('/')} />
+        ) : (
+          <main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-8">
+            {error && (
+              <div className="mb-6 flex items-center justify-between gap-4 rounded-xl border border-[#e04337]/40 bg-[#e04337]/10 px-4 py-3 text-sm text-[#ff8e8e]">
+                {error}
+                <button
+                  type="button"
+                  onClick={() => loadFeed(feed, undefined, true)}
+                  className="cursor-pointer rounded-lg bg-white px-3 py-1.5 font-bold text-[#0e1217] transition hover:bg-[#cfd6e6] active:scale-95"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {query && (
+              <p className="mb-4 text-sm text-[#a8b3cf]">
+                {visiblePosts.length} {visiblePosts.length === 1 ? 'result' : 'results'} for “{query}”
+              </p>
+            )}
+
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-[repeat(auto-fill,minmax(250px,1fr))] xl:gap-8">
+              {visiblePosts.map((post) => (
+                <PostCard key={post.id} post={post} onNavigate={navigate} />
+              ))}
+              {loading &&
+                Array.from({ length: posts.length ? 3 : 9 }, (_, i) => <CardSkeleton key={`s${i}`} />)}
             </div>
-          )}
 
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {posts.map((post) => (
-              <PostCard key={post.id} post={post} onNavigate={navigate} />
-            ))}
-          </div>
-
-          {(cursor || loading) && (
-            <div className="mt-10 flex justify-center">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => loadFeed(feed, cursor, false)}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[#2d323e] bg-[#1c1f26] px-6 py-2.5 text-sm font-semibold text-white transition hover:border-[#525866] hover:bg-[#22262f] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {loading ? 'Cargando...' : 'Más'}
-              </button>
-            </div>
-          )}
-        </main>
-      )}
+            <div ref={sentinelRef} className="h-px" />
+          </main>
+        )}
+      </div>
     </>
   );
 }
